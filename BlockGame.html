@@ -7,64 +7,59 @@
     <script src="../Scripts/BlockGame.js"></script>
     <!--<script src="../Scripts/Snake.js?v=1"></script>-->
     <script type="text/javascript">
-        var game = null;
-        var nextCanCtx = null;
+        var game = null, nextCanCtx = null;
         $(function () {
-            game = new BlockGame("gameCan", 20, 30);
-            game.ListenGetscore(function (score) {
-                $("#lblScore").text(score);
-            });
+            game = BlockGame("gameCan", 20, 30)
+                  .ListenGetscore(function (score) {
+                      $("#lblScore").text(score);
+                  })
+                  .ListenGameover(function (score) {
+                      alert("Game Over!");
+                  })
+                  .ListenLevelUp(function (level) {
+                      $("#lblLevel").text(level);
+                  })
+                  .ListenNewShapeEvents(function (nextShape) {
+                      nextCanCtx.clearRect(0, 0, 100, 100);
+                      nextCanCtx.save();
+                      nextCanCtx.fillStyle = nextShape.fillStyle;
+                      var l = game.blockLen;
+                      for (var i = 0; i < nextShape.blocks.length; i++) {
+                          y = (nextShape.blocks[i].x + 3) * l;
+                          x = (nextShape.blocks[i].y - 5) * l;
+                          nextCanCtx.beginPath();
+                          nextCanCtx.moveTo(x, y);
+                          nextCanCtx.rect(x, y, l, l);
+                          nextCanCtx.closePath();
+                          nextCanCtx.fill();
+                          nextCanCtx.stroke();
+                      }
+                      nextCanCtx.restore();
 
-            game.ListenGameover(function (score) {
-                alert("Game Over!");
-            });
-
-            game.ListenLevelUp(function (level) {
-                $("#lblLevel").text(level);
-            });
-
-            game.ListenNewShapeEvents(function (nextShape) {
-                nextCanCtx.clearRect(0, 0, 100, 100);
-                nextCanCtx.save();
-                nextCanCtx.fillStyle = nextShape.fillStyle;
-                var l = game.blockLen;
-                for (var i = 0; i < nextShape.blocks.length; i++) {
-                    y = (nextShape.blocks[i].x + 3) * l;
-                    x = (nextShape.blocks[i].y - 5) * l;
-                    nextCanCtx.beginPath();
-                    nextCanCtx.moveTo(x, y);
-                    nextCanCtx.rect(x, y, l, l);
-                    nextCanCtx.closePath();
-                    nextCanCtx.fill();
-                    nextCanCtx.stroke();
-                }
-                nextCanCtx.restore();
-
-            });
+                  });
             nextCanCtx = document.getElementById("nextShape").getContext("2d");
+
+            $("#btnStart").click(function () {
+                $("#lblScore").text(0);
+                game.Start();
+            });
+
+            $("#btnPauseResume").toggle(function () {
+                game.Pause();
+                $(this).val("Resume");
+            }, function () {
+                game.Resume();
+                $(this).val("Pause");
+            });
         });
 
-        function StartGame() {
-            $("#lblScore").text(0);
-            game.Start();
-        }
-
-        function PauseResume(o) {
-            if ($(o).val() == "Pause") {
-                game.Pause();
-                $(o).val("Resume");
-            } else {
-                game.Resume();
-                $(o).val("Pause");
-            }
-        }
 
     </script>
 </head>
 <body>
     <div style="width: 700px; margin: 0 auto; padding-top: 20px;">
-        <input type="button" value="Start Game" onclick="StartGame()" />
-        <input type="button" value="Pause" onclick="PauseResume(this)" />
+        <input type="button" value="Start Game" id="btnStart" />
+        <input type="button" value="Pause" id="btnPauseResume" />
         <table style="width: 600px;">
             <tr>
                 <td style="width: 60%; position: relative;">
@@ -84,7 +79,6 @@
                     </div>
                     <div>
                         <strong>Next Shape:</strong>
-
                         <br />
                         <canvas id="nextShape" width="100" height="100"></canvas>
                     </div>
