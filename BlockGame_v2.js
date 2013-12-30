@@ -1,11 +1,51 @@
 (function (window) {
     var _eventEnum = {
-        pause: 0,
-        getScore: 1,
-        gameover: 2,
-        levelUp: 3,
-        newShape: 4
-    };
+        pause: "pause",
+        getScore: "getScore",
+        gameover: "gameover",
+        levelUp: "levelUp",
+        newShape: "newShape"
+    },
+    _events = (function () {//Pub&Sub 
+        var topics = {},
+         uuid = 0,
+         event = function () {
+             this.listen = function (topic, callback) {
+                 if (typeof topic !== "string" || typeof callback !== "function")
+                     return this;
+                 if (!topics[topic]) {
+                     topics[topic] = [];
+                 }
+                 callback.uuid = uuid++;
+                 topics[topic].push(callback);
+                 return this;
+             };
+             this.trigger = function (src, topic, data) {
+                 if (!topics[topic] || topics[topic].length === 0)
+                     return this;
+                 var callbacks = topics[topic],
+                     i = 0,
+                     length = callbacks.length;
+                 for (; i < length; i++) {
+                     callbacks[i].call(src, data);
+                 }
+                 return this;
+             };
+             this.remove = function (topic, callback) {
+                 if (!topics[topic] || topics[topic].length === 0)
+                     return this;
+                 var callbacks = topics[topic],
+                     i = 0,
+                     length = callbacks.length;
+                 for (; i < length; i++) {
+                     if (callback.uuid === callbacks[i].uuid)
+                         callbacks.splice(i, 1);
+                 }
+                 return this;
+             };
+         };
+        return event;
+    })();
 
     var _config = {
         levelCfg: [{ frame: 450, score: 100 }, { frame: 400, score: 300 }, { frame: 350, score: 600 },
@@ -13,18 +53,17 @@
             { frame: 150, score: 2800 }, { frame: 120, score: 3600 }, { frame: 100, score: 10000000 }],
         blockColors: ["yellow", "#9745D6", "#79BF5E", "#E06CAA", "#3ED6CF"],
         bgColor: "#D5DEDD"
-    }
+    };
 
     var BlockGame = function (canvasId, cols, rows) {
+        if (!(this instanceof BlockGame)) { // Allow instantiation without the 'new' keyword
+            return new BlockGame(canvasId, cols, rows);
+        }
         var _self = this;
         this.rows = rows;
         this.cols = cols;
         this.timerID = -1;
-
-        this.getScoreEvents = [];
-        this.gameoverEvents = [];
-        this.levelUpEvents = [];
-        this.newShapeEvents = [];
+        this.events = new _events();
 
         this.shapeCan = document.getElementById(canvasId);
         this.shapeCtx = this.shapeCan.getContext("2d");
@@ -85,53 +124,24 @@
         }
     }
 
-    BlockGame.prototype.TriggerEvent = function (type) {//invoke corresponding event handlers
-        switch (type) {
-            case _eventEnum.getScore:
-                for (var i = 0; i < this.getScoreEvents.length; i++) {
-                    if (typeof this.getScoreEvents[i] == "function") {
-                        this.getScoreEvents[i].call(this, this.score);
-                    }
-                }
-                break;
-            case _eventEnum.gameover:
-                for (var i = 0; i < this.gameoverEvents.length; i++) {
-                    if (typeof this.gameoverEvents[i] == "function") {
-                        this.gameoverEvents[i].call(this, this.score);
-                    }
-                }
-                break;
-            case _eventEnum.levelUp:
-                for (var i = 0; i < this.levelUpEvents.length; i++) {
-                    if (typeof this.levelUpEvents[i] == "function") {
-                        this.levelUpEvents[i].call(this, this.level);
-                    }
-                }
-                break;
-            case _eventEnum.newShape:
-                for (var i = 0; i < this.newShapeEvents.length; i++) {
-                    if (typeof this.newShapeEvents[i] == "function") {
-                        this.newShapeEvents[i].call(this, this.nextShape);
-                    }
-                }
-                break;
-        }
-    }
-
     BlockGame.prototype.ListenNewShapeEvents = function (fn) {
-        this.newShapeEvents.push(fn);
+        this.events.listen(_eventEnum.newShape, fn);
+        return this;
     }
 
     BlockGame.prototype.ListenGetscore = function (fn) {
-        this.getScoreEvents.push(fn);
+        this.events.listen(_eventEnum.getScore, fn);
+        return this;
     }
 
     BlockGame.prototype.ListenGameover = function (fn) {
-        this.gameoverEvents.push(fn);
+        this.events.listen(_eventEnum.gameover, fn);
+        return this;
     }
 
     BlockGame.prototype.ListenLevelUp = function (fn) {
-        this.levelUpEvents.push(fn);
+        this.events.listen(_eventEnum.levelUp, fn);
+        return this;
     }
 
     BlockGame.prototype.KeydownHandler = function (e) {
@@ -180,22 +190,23 @@
             this.GameOver();
         }
         this.shapeCtx.fillStyle = this.shape.fillStyle;
-        this.TriggerEvent(_eventEnum.newShape);
+        this.events.trigger(this, _eventEnum.newShape, this.nextShape);
     }
 
-    BlockGame.prototype.Merge = function () {//merge shape blocks into block array
-        for (var i = 0; i < this.shape.blocks.length; i++) {
-            var x = this.shape.blocks[i].x;
-            var y = this.shape.blocks[i].y;
+    BlockGame.prototype.Merge = function () {//merge shape blocks into background block array
+        var i = j = x = y = score = 0,
+            length = this.shape.blocks.length,
+            flag = true,
+            eliminateRows = 0;
+        for (; i < length; i++) {
+            x = this.shape.blocks[i].x;
+            y = this.shape.blocks[i].y;
             if (x >= 0 && y >= 0 && x < this.rows && y < this.cols)
                 this.blocksArr[x][y] = 1;
         }
 
-        var eliminateRows = 0;
-
-        for (var i = this.rows - 1; i >= 0; i--) {
-            var flag = true;
-            for (var j = 0; j < this.cols - 1; j++) {
+        for (i = this.rows - 1; i >= 0; i--) {
+            for (j = 0; j < this.cols - 1; j++) {//check whether all items in current have been filled
                 if (this.blocksArr[i][j] == 0) {
                     flag = false
                     break;
@@ -208,14 +219,14 @@
             }
         }
         if (eliminateRows > 0) {//score: 5 15 35 60 105
-            var score = (10 * eliminateRows * (eliminateRows - 1) + 10) / 2;
+            score = (10 * eliminateRows * (eliminateRows - 1) + 10) / 2;
             this.GetScore(score);
         }
     }
 
     BlockGame.prototype.GetScore = function (score) {
         this.score += score;
-        this.TriggerEvent(_eventEnum.getScore);
+        this.events.trigger(this, _eventEnum.getScore, this.score);
         if (this.score > this.promoteScore) {
             this.LevelUp();
         }
@@ -225,12 +236,12 @@
         this.level++;
         this.frame = _config.levelCfg[this.level].frame;
         this.promoteScore = _config.levelCfg[this.level].score;
-        this.TriggerEvent(_eventEnum.levelUp);
+        this.events.trigger(this, _eventEnum.levelUp, this.level);
     }
 
     BlockGame.prototype.GameOver = function () {
         this.isOver = true;
-        this.TriggerEvent(_eventEnum.gameover);
+        this.events.trigger(this, _eventEnum.gameover, null);
     }
 
     BlockGame.prototype.Pause = function () {
@@ -242,6 +253,7 @@
     }
 
     BlockGame.prototype.EliminateRow = function (index) {
+
         for (var i = index; i > 0; i--) {
             for (var j = 0; j < this.cols; j++) {
                 this.blocksArr[i][j] = this.blocksArr[i - 1][j];
@@ -266,13 +278,14 @@
             return;
         if (this.ShiftCollision(1, 0)) {
             this.Merge();
+            this.DrawBg();
             this.CreateShape()
         } else {
             this.shape.Down();
         }
         if (!this.isOver) {
             this.Draw();
-            this.DrawBg();
+            //this.DrawBg();
             this.timerID = setTimeout(function () {
                 _self.Update();
             }, this.frame);
@@ -339,7 +352,7 @@
             } else {
                 this.prototype = new parentFn();
             }
-            
+
             this.prototype.constructor = this;
         } else {
             this.prototype = parentFn;
@@ -352,20 +365,20 @@
         this.y = y;
     }
 
-    var ShapeArr = [];
+    var ShapeFactory = (function () {//absolute factory
+        var ShapeArr = [];
+        return {
+            CreateShape: function (x, y) {//create a random shape
+                var random = Math.floor(Math.random() * 100);
+                return new ShapeArr[random % ShapeArr.length](x, y);
+            },
+            AddShape: function (shape) {
+                ShapeArr.push(shape);
+            }
+        };
+    })();
 
-    var ShapeFactory = {
-        CreateShape: function (x, y) {//create a random shape
-            var random = Math.floor(Math.random() * 100);
-
-            return new ShapeArr[random % ShapeArr.length](x, y);
-        }
-    }
-
-    var Shape = function () {
-        //this.Init();
-    };
-
+    var Shape = function () { };
 
     Shape.prototype.Init = function () {
         this.blocks = [];
@@ -429,7 +442,7 @@
         this.Init();
     };
     Triangle.InheritFrom(Shape, null, null);
-    ShapeArr.push(Triangle);
+    ShapeFactory.AddShape(Triangle);
 
     Triangle.prototype.st0 = function () {
         this.blocks[0] = new Block(this.x - 1, this.y, 1);
@@ -465,7 +478,7 @@
         this.Init();
     }
     Line.InheritFrom(Shape, null, null);
-    ShapeArr.push(Line);
+    ShapeFactory.AddShape(Line);
 
     Line.prototype.st0 = function () {
         this.blocks[0] = new Block(this.x, this.y - 2, 1);
@@ -497,7 +510,7 @@
         this.Init();
     }
     Square.InheritFrom(Shape, null, null);
-    ShapeArr.push(Square);
+    ShapeFactory.AddShape(Square);
 
     Square.prototype.st0 = function () {
         this.blocks[0] = new Block(this.x, this.y);
@@ -524,7 +537,7 @@
         this.Init();
     }
     Cross.InheritFrom(Shape, null, null);
-    ShapeArr.push(Cross);
+    ShapeFactory.AddShape(Cross);
 
     Cross.prototype.st0 = function () {
         this.blocks[0] = new Block(this.x, this.y);
@@ -551,7 +564,7 @@
         this.Init();
     }
     LShape.InheritFrom(Shape, null, null);
-    ShapeArr.push(LShape);
+    ShapeFactory.AddShape(LShape);
 
     LShape.prototype.st0 = function () {
         this.blocks[0] = new Block(this.x, this.y);
@@ -587,7 +600,7 @@
         this.Init();
     }
     PositiveL.InheritFrom(Shape, null, null);
-    ShapeArr.push(PositiveL);
+    ShapeFactory.AddShape(PositiveL);
 
     PositiveL.prototype.st0 = function () {
         this.blocks[0] = new Block(this.x, this.y);
@@ -619,3 +632,4 @@
 
     window.BlockGame = BlockGame;
 })(window)
+
